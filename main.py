@@ -20,29 +20,25 @@ def process_message(message_element):
     if message_id not in processed_messages:
         message_text_element = message_element.find_element(By.CSS_SELECTOR, 'div.markdown.prose.w-full.break-words.dark\\:prose-invert.light > p')
         message_text = message_text_element.text
-        # Click the "Copy code" button
-        try:
-            copy_button = message_element.find_element(By.XPATH, './/button[contains(., "Copy code")]')
-            copy_button.click()
-            # Wait for the clipboard to be populated with the copied text
-            time.sleep(1)  # Adjust the delay if needed
-            # Retrieve the copied text from the clipboard
-            code_text = pyperclip.paste()
-            # Add your message processing logic here
-            print("Message:", message_text)
-            print("Code snippet:", code_text)
-            # Extract the remaining text after the code snippet
-            try:
-                remaining_text = message_text_element.find_element(By.XPATH, './following-sibling::p').text
-                print("Remaining text:", remaining_text)
-            except NoSuchElementException:
-                remaining_text = None
-            # Mark the message as processed
-        except NoSuchElementException:
-            # If the "Copy code" button is not found, print a warning message
-            print("Warning: 'Copy code' button not found for message:", message_text)
-        print(message_id)
+        # Extract the command and data from the message text
+        action, data_fields = parse_command(message_text)
+        
+        # Proceed only if an action is detected
+        if action:
+            if action == "ADD_FILE":
+                add_file(data_fields)
+            elif action == "MODIFY_CODE":
+                modify_code(data_fields)
+                # Optionally, format the modified code
+                format_code(data_fields.get('path'))
+            # Extend with other actions as needed
+            print(f"Action processed: {action}")
+        else:
+            # If no action is found, log the message text for review
+            print("No action found in message:", message_text)
+        
         processed_messages.add(message_id)
+
 
 def wait_for_message_stable(browser, message_element, timeout=10):
     """
@@ -104,16 +100,61 @@ def parse_command(message):
     return action_match.group(1) if action_match else None, data_fields
 
 def add_file(data):
-    # Implementation from previous discussions
-    ...
+    file_path = data.get('path')
+    content = data.get('content', '')
+    
+    if not file_path:
+        print("Error: File path not provided.")
+        return
+    
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'w') as file:
+        file.write(content)
+    print(f"File created: {file_path}")
+
 
 def modify_code(data):
-    # Enhanced implementation from previous discussions
-    ...
+    file_path = data.get('path')
+    start_marker = re.escape(data.get('start_marker'))
+    end_marker = re.escape(data.get('end_marker'))
+    new_content = data.get('new_content', '')
+    add_before = data.get('add_before')
+    add_after = data.get('add_after')
+
+    if not file_path or not (start_marker and end_marker or add_before or add_after):
+        print("Error: Required data fields are missing.")
+        return
+    
+    try:
+        with open(file_path, 'r') as file:
+            content = file.read()
+
+        # For add_before or add_after, the logic will slightly differ
+        if start_marker and end_marker:
+            pattern = f"({start_marker})(.*?){end_marker}"
+            content = re.sub(pattern, r'\1' + new_content + end_marker, content, flags=re.DOTALL)
+
+        if add_before:
+            pattern = f"^(?=.*{re.escape(add_before)})"  # Lookahead to match the whole line containing 'add_before' text
+            content = re.sub(pattern, new_content + r'\n', content, flags=re.MULTILINE)
+        
+        if add_after:
+            pattern = f"({re.escape(add_after)}.*?$)"  # Match the whole line containing 'add_after' text
+            content = re.sub(pattern, r'\1' + '\n' + new_content, content, flags=re.MULTILINE)
+        
+        with open(file_path, 'w') as file:
+            file.write(content)
+        
+        print(f"Code modifications applied in: {file_path}")
+    except Exception as e:
+        print(f"An error occurred while modifying the file: {e}")
 
 def format_code(file_path):
-    # Formatting code using black or prettier
-    ...
+    try:
+        subprocess.run(["black", file_path], check=True)
+        print(f"Code in {file_path} formatted successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error formatting code: {e}")
 
 
 def main():
