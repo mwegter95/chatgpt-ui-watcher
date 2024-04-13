@@ -14,28 +14,49 @@ processed_messages = set()
 
 def process_message(message_element):
     """
-    Process a single chat message.
+    Process a single chat message, including extracting code snippets, handling remaining text,
+    and executing actions.
     """
     message_id = message_element.get_attribute("data-message-id")
     if message_id not in processed_messages:
         message_text_element = message_element.find_element(By.CSS_SELECTOR, 'div.markdown.prose.w-full.break-words.dark\\:prose-invert.light > p')
-        message_text = message_text_element.text
-        # Extract the command and data from the message text
-        action, data_fields = parse_command(message_text)
+        full_message_text = message_text_element.text
+
+        # Attempt to click the "Copy code" button and extract the code snippet
+        code_text = None
+        try:
+            copy_button = message_element.find_element(By.XPATH, './/button[contains(., "Copy code")]')
+            copy_button.click()
+            time.sleep(1)  # Adjust the delay if needed
+            code_text = pyperclip.paste()
+            # Attempt to extract the remaining text after the code snippet
+            try:
+                remaining_text_element = message_element.find_element(By.XPATH, './/following-sibling::p')
+                remaining_text = remaining_text_element.text
+            except NoSuchElementException:
+                remaining_text = ""  # No remaining text found
+            # Update the full_message_text to include the code snippet explicitly if copied
+            full_message_text += "\nCode snippet: " + code_text + "\n" + remaining_text
+        except NoSuchElementException:
+            print("Note: 'Copy code' button not found for message:", full_message_text)
+            remaining_text = ""
+
+        # Now parse and execute any action commands present in the message
+        action, data_fields = parse_command(full_message_text)
         
-        # Proceed only if an action is detected
         if action:
+            print(f"Executing action: {action}")
             if action == "ADD_FILE":
                 add_file(data_fields)
             elif action == "MODIFY_CODE":
                 modify_code(data_fields)
                 # Optionally, format the modified code
                 format_code(data_fields.get('path'))
-            # Extend with other actions as needed
-            print(f"Action processed: {action}")
+            # Handle other actions as needed
+            print(f"Action processed: {action}, Message: {full_message_text}")
         else:
-            # If no action is found, log the message text for review
-            print("No action found in message:", message_text)
+            # This handles messages without actions but includes code snippets and remaining text
+            print("Message processed without actions:", full_message_text)
         
         processed_messages.add(message_id)
 
