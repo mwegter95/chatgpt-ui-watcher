@@ -2,9 +2,13 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException, TimeoutException
 import time
-import pyperclip  # This library allows us to interact with the clipboard
+import pyperclip  # For clipboard interactions
+import re  # For regex operations
+import os  # For file operations
+import subprocess  # For code formatting
+
 
 processed_messages = set()
 
@@ -27,11 +31,18 @@ def process_message(message_element):
             # Add your message processing logic here
             print("Message:", message_text)
             print("Code snippet:", code_text)
+            # Extract the remaining text after the code snippet
+            try:
+                remaining_text = message_text_element.find_element(By.XPATH, './following-sibling::p').text
+                print("Remaining text:", remaining_text)
+            except NoSuchElementException:
+                remaining_text = None
             # Mark the message as processed
-            processed_messages.add(message_id)
         except NoSuchElementException:
             # If the "Copy code" button is not found, print a warning message
             print("Warning: 'Copy code' button not found for message:", message_text)
+        print(message_id)
+        processed_messages.add(message_id)
 
 def wait_for_message_stable(browser, message_element, timeout=10):
     """
@@ -68,9 +79,42 @@ def monitor_chat(browser):
                 except StaleElementReferenceException:
                     # Skip if the element is no longer attached to the DOM
                     continue
-        
+        except TimeoutException:
+            print("Timed out waiting for message containers.")
         except Exception as e:
             print("An error occurred while monitoring chat:", e)
+        
+        time.sleep(5)  # Add a delay between iterations to avoid continuous repetition
+
+def parse_command(message):
+    action_pattern = r"\[ACTION\]\s*(\w+)"
+    data_pattern = r"\[DATA\](.*)"
+    
+    action_match = re.search(action_pattern, message)
+    data_match = re.search(data_pattern, message)
+    
+    data_fields = {}
+    
+    if action_match and data_match:
+        data_string = data_match.group(1).strip()
+        for field in data_string.split(';'):
+            key, value = field.split('=', 1)
+            data_fields[key.strip()] = value.strip()
+            
+    return action_match.group(1) if action_match else None, data_fields
+
+def add_file(data):
+    # Implementation from previous discussions
+    ...
+
+def modify_code(data):
+    # Enhanced implementation from previous discussions
+    ...
+
+def format_code(file_path):
+    # Formatting code using black or prettier
+    ...
+
 
 def main():
     # Initialize WebDriver with remote debugging port
