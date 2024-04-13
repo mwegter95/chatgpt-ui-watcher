@@ -2,8 +2,9 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
 import time
+import pyperclip  # This library allows us to interact with the clipboard
 
 processed_messages = set()
 
@@ -15,10 +16,22 @@ def process_message(message_element):
     if message_id not in processed_messages:
         message_text_element = message_element.find_element(By.CSS_SELECTOR, 'div.markdown.prose.w-full.break-words.dark\\:prose-invert.light > p')
         message_text = message_text_element.text
-        # Add your message processing logic here
-        print("Message:", message_text)
-        # Mark the message as processed
-        processed_messages.add(message_id)
+        # Click the "Copy code" button
+        try:
+            copy_button = message_element.find_element(By.XPATH, './/button[contains(., "Copy code")]')
+            copy_button.click()
+            # Wait for the clipboard to be populated with the copied text
+            time.sleep(1)  # Adjust the delay if needed
+            # Retrieve the copied text from the clipboard
+            code_text = pyperclip.paste()
+            # Add your message processing logic here
+            print("Message:", message_text)
+            print("Code snippet:", code_text)
+            # Mark the message as processed
+            processed_messages.add(message_id)
+        except NoSuchElementException:
+            # If the "Copy code" button is not found, print a warning message
+            print("Warning: 'Copy code' button not found for message:", message_text)
 
 def wait_for_message_stable(browser, message_element, timeout=10):
     """
