@@ -2,6 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
+import time
 
 processed_messages = set()
 
@@ -18,6 +20,24 @@ def process_message(message_element):
         # Mark the message as processed
         processed_messages.add(message_id)
 
+def wait_for_message_stable(browser, message_element, timeout=10):
+    """
+    Wait until the message text becomes stable.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            # Double-check if the message text has changed after a brief wait
+            time.sleep(1)  # Wait for 1 second
+            current_text = message_element.find_element(By.CSS_SELECTOR, 'div.markdown.prose.w-full.break-words.dark\\:prose-invert.light > p').text
+            time.sleep(1)  # Wait for 1 second
+            new_text = message_element.find_element(By.CSS_SELECTOR, 'div.markdown.prose.w-full.break-words.dark\\:prose-invert.light > p').text
+            if current_text == new_text:
+                return True
+        except StaleElementReferenceException:
+            return False
+    return False
+
 def monitor_chat(browser):
     """
     Continuously monitor the chat window for new messages.
@@ -29,7 +49,12 @@ def monitor_chat(browser):
             
             # Process each message
             for container in message_containers:
-                process_message(container)
+                try:
+                    if wait_for_message_stable(browser, container):
+                        process_message(container)
+                except StaleElementReferenceException:
+                    # Skip if the element is no longer attached to the DOM
+                    continue
         
         except Exception as e:
             print("An error occurred while monitoring chat:", e)
